@@ -11,22 +11,18 @@ export default function App() {
 
   // ── Register inputs in Sigma's element panel ─────────────────────────
   useEditorPanelConfig([
-    { name: 'source',       type: 'element',        label: 'Data Source'                         },
-    { name: 'insertValue',  type: 'variable',        label: 'Insert Value Variable'               },
-    { name: 'insertAction', type: 'action-trigger',  label: 'Insert Row Action'                   },
+    { name: 'source',       type: 'element',       label: 'Data Source'           },
+    { name: 'insertValue',  type: 'variable',       label: 'Insert Value Variable' },
+    { name: 'insertAction', type: 'action-trigger', label: 'Insert Row Action'     },
   ])
 
-  // ── Sigma data hooks ──────────────────────────────────────────────────
-  const sigmaColumns = useElementColumns('source')
-  const sigmaData    = useElementData('source')
+  // ── Sigma hooks ───────────────────────────────────────────────────────
+  const sigmaColumns               = useElementColumns('source')
+  const sigmaData                  = useElementData('source')
+  const [, setInsertVar]           = useVariable('insertValue')
+  const triggerInsert              = useActionTrigger('insertAction')
 
-  // Variable that the plugin controls — wire this to your Input Table column
-  const [insertVar, setInsertVar] = useVariable('insertValue')
-
-  // Action trigger — wire this to the Input Table's "Insert row" action
-  const triggerInsert = useActionTrigger('insertAction')
-
-  // ── Derive connection state + rows ───────────────────────────────────
+  // ── Derive rows ───────────────────────────────────────────────────────
   const isConnected = sigmaColumns && Object.keys(sigmaColumns).length > 0
 
   const { columns, rows } = useMemo(() => {
@@ -44,18 +40,24 @@ export default function App() {
   // ── Local state ───────────────────────────────────────────────────────
   const [inputValue, setInputValue] = useState('')
   const [log,        setLog]        = useState([])
-  const [status,     setStatus]     = useState(null) // 'ok' | 'error' | null
+  const [status,     setStatus]     = useState(null)
 
-  const handleInsert = () => {
+  const handleInsert = async () => {
     const val = inputValue.trim()
     if (!val) return
 
     try {
-      // 1. Push value into the Sigma variable
+      // Force the variable to always change by clearing it first,
+      // then setting the real value — this ensures Sigma's "on change"
+      // event fires even if the same value is submitted twice in a row.
+      setInsertVar('')
+      await new Promise(r => setTimeout(r, 50))
       setInsertVar(val)
-      // 2. Fire the action trigger — Sigma runs whatever action is wired to it
+      await new Promise(r => setTimeout(r, 50))
+
+      // Fire the action trigger — wire this in Sigma to "Insert row"
       triggerInsert()
-      // 3. Log it locally so the user gets feedback
+
       setLog(prev => [{ val, ts: new Date().toLocaleTimeString() }, ...prev])
       setInputValue('')
       setStatus('ok')
@@ -80,13 +82,15 @@ export default function App() {
       display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
     },
     headerTitle: { fontWeight: 700, fontSize: 14 },
-    chip: (connected) => ({
+    chip: (ok) => ({
       fontSize: 11, padding: '2px 8px', borderRadius: 20,
-      background: connected ? 'rgba(62,207,142,.15)' : 'rgba(245,165,35,.15)',
-      color: connected ? '#3ecf8e' : '#f5a623',
-      fontFamily: 'monospace',
+      background: ok ? 'rgba(62,207,142,.15)' : 'rgba(245,165,35,.15)',
+      color: ok ? '#3ecf8e' : '#f5a623', fontFamily: 'monospace',
     }),
-    body: { flex: 1, padding: 20, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 20 },
+    body: {
+      flex: 1, padding: 20, overflowY: 'auto',
+      display: 'flex', flexDirection: 'column', gap: 20,
+    },
     label: {
       fontSize: 11, fontWeight: 700, letterSpacing: '.08em',
       textTransform: 'uppercase', color: '#7880a4', marginBottom: 8,
@@ -96,44 +100,46 @@ export default function App() {
       flex: 1, padding: '8px 12px', background: '#22263a',
       border: '1px solid #2e3350', borderRadius: 6,
       color: '#e8eaf2', fontSize: 14, outline: 'none',
-      transition: 'border-color .15s',
     },
     button: {
       padding: '8px 20px', background: '#5b6af5', color: '#fff',
       border: 'none', borderRadius: 6, fontSize: 14,
       fontWeight: 600, cursor: 'pointer', flexShrink: 0,
     },
-    statusOk:    { fontSize: 12, color: '#3ecf8e' },
-    statusError: { fontSize: 12, color: '#f5555d' },
+    statusOk:    { fontSize: 12, color: '#3ecf8e', marginTop: 6 },
+    statusError: { fontSize: 12, color: '#f5555d', marginTop: 6 },
+    callout: {
+      padding: '12px 14px', background: '#22263a', borderRadius: 8,
+      border: '1px solid #2e3350', fontSize: 12, color: '#7880a4', lineHeight: 1.8,
+    },
+    calloutTitle: { fontWeight: 700, color: '#e8eaf2', marginBottom: 8, fontSize: 13 },
+    step: { display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 6 },
+    stepNum: {
+      width: 18, height: 18, borderRadius: '50%', background: '#5b6af5',
+      color: '#fff', fontSize: 10, fontWeight: 700, flexShrink: 0,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 2,
+    },
+    code: {
+      fontFamily: 'monospace', background: '#0f1117',
+      padding: '1px 5px', borderRadius: 3, fontSize: 11,
+    },
     logItem: {
       padding: '6px 12px', background: 'rgba(62,207,142,.08)',
       border: '1px solid rgba(62,207,142,.2)', borderRadius: 6,
       fontSize: 13, display: 'flex', alignItems: 'center', gap: 8,
     },
     logDot: { width: 6, height: 6, borderRadius: '50%', background: '#3ecf8e', flexShrink: 0 },
-    logTs: { marginLeft: 'auto', fontSize: 11, color: '#7880a4' },
-    table: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
+    logTs:  { marginLeft: 'auto', fontSize: 11, color: '#7880a4' },
+    table:  { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
     th: {
       padding: '6px 10px', textAlign: 'left', background: '#22263a',
       borderBottom: '2px solid #2e3350', fontSize: 11,
       letterSpacing: '.06em', textTransform: 'uppercase', color: '#7880a4',
     },
-    td: { padding: '6px 10px', borderBottom: '1px solid #2e3350' },
-    callout: {
-      padding: '12px 14px', background: '#22263a', borderRadius: 8,
-      border: '1px solid #2e3350', fontSize: 12, color: '#7880a4', lineHeight: 1.7,
-    },
-    calloutTitle: { fontWeight: 700, color: '#e8eaf2', marginBottom: 6, fontSize: 13 },
-    step: { display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 4 },
-    stepNum: {
-      width: 18, height: 18, borderRadius: '50%', background: '#5b6af5',
-      color: '#fff', fontSize: 10, fontWeight: 700,
-      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1,
-    },
+    td:     { padding: '6px 10px', borderBottom: '1px solid #2e3350' },
     splash: {
-      flex: 1, display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center',
-      gap: 8, color: '#7880a4', textAlign: 'center', padding: 40,
+      flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', gap: 8, color: '#7880a4', textAlign: 'center', padding: 40,
     },
   }
 
@@ -150,9 +156,9 @@ export default function App() {
 
       <div style={s.body}>
 
-        {/* ── Insert input ── */}
+        {/* ── Input ── */}
         <div>
-          <div style={s.label}>Insert value into Input Table</div>
+          <div style={s.label}>Insert value</div>
           <div style={s.inputRow}>
             <input
               style={s.input}
@@ -163,20 +169,32 @@ export default function App() {
             />
             <button style={s.button} onClick={handleInsert}>Insert</button>
           </div>
-          {status === 'ok'    && <div style={{...s.statusOk,    marginTop: 6}}>✓ Inserted</div>}
-          {status === 'error' && <div style={{...s.statusError, marginTop: 6}}>✕ Insert failed — check wiring in element panel</div>}
+          {status === 'ok'    && <div style={s.statusOk}>✓ Triggered</div>}
+          {status === 'error' && <div style={s.statusError}>✕ Failed — check element panel wiring</div>}
         </div>
 
         {/* ── Wiring instructions ── */}
         <div style={s.callout}>
-          <div style={s.calloutTitle}>How to wire this plugin to your Input Table</div>
-          <div style={s.step}><span style={s.stepNum}>1</span><span>In the element panel → <strong>Insert Value Variable</strong>: create or select a Sigma text variable</span></div>
-          <div style={s.step}><span style={s.stepNum}>2</span><span>In that variable's settings, set it as the default value for your Input Table's text column</span></div>
-          <div style={s.step}><span style={s.stepNum}>3</span><span>In the element panel → <strong>Insert Row Action</strong>: wire to an action that inserts a row in the Input Table</span></div>
-          <div style={s.step}><span style={s.stepNum}>4</span><span>Type a value above and click <strong>Insert</strong> — the plugin sets the variable then fires the action</span></div>
+          <div style={s.calloutTitle}>Wiring instructions</div>
+          <div style={s.step}>
+            <span style={s.stepNum}>1</span>
+            <span>Element panel → <strong>Insert Value Variable</strong>: create a new text variable (e.g. <span style={s.code}>NewRowValue</span>)</span>
+          </div>
+          <div style={s.step}>
+            <span style={s.stepNum}>2</span>
+            <span>Element panel → <strong>Insert Row Action</strong>: create a new action sequence</span>
+          </div>
+          <div style={s.step}>
+            <span style={s.stepNum}>3</span>
+            <span>In that action sequence add: <strong>Set Input Table column</strong> = <span style={s.code}>NewRowValue</span>, then <strong>Insert row</strong></span>
+          </div>
+          <div style={s.step}>
+            <span style={s.stepNum}>4</span>
+            <span>Type a value above and click <strong>Insert</strong> — the plugin sets the variable then fires the action</span>
+          </div>
         </div>
 
-        {/* ── Insert log ── */}
+        {/* ── Log ── */}
         {log.length > 0 && (
           <div>
             <div style={s.label}>Inserted this session ({log.length})</div>
@@ -192,7 +210,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── Source data preview ── */}
+        {/* ── Source preview ── */}
         {isConnected && rows.length > 0 ? (
           <div>
             <div style={s.label}>Source data ({rows.length} rows)</div>

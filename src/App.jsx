@@ -4,23 +4,25 @@ import {
   useElementColumns,
   useElementData,
   useVariable,
-  useActionTrigger,
 } from '@sigmacomputing/plugin'
 
 export default function App() {
 
   // ── Register inputs in Sigma's element panel ─────────────────────────
+  // Two variables:
+  //   insertValue  — the text to insert (wire to Input Table column default)
+  //   insertTick   — a counter that always changes, use "when this changes"
+  //                  as the trigger for your Insert Row action sequence
   useEditorPanelConfig([
-    { name: 'source',       type: 'element',       label: 'Data Source'           },
-    { name: 'insertValue',  type: 'variable',       label: 'Insert Value Variable' },
-    { name: 'insertAction', type: 'action-trigger', label: 'Insert Row Action'     },
+    { name: 'source',      type: 'element',  label: 'Data Source'                              },
+    { name: 'insertValue', type: 'variable', label: 'Insert Value (text to insert)'             },
+    { name: 'insertTick',  type: 'variable', label: 'Insert Tick (use as action trigger)'       },
   ])
 
-  // ── Sigma hooks ───────────────────────────────────────────────────────
-  const sigmaColumns               = useElementColumns('source')
-  const sigmaData                  = useElementData('source')
-  const [, setInsertVar]           = useVariable('insertValue')
-  const triggerInsert              = useActionTrigger('insertAction')
+  const sigmaColumns         = useElementColumns('source')
+  const sigmaData            = useElementData('source')
+  const [, setInsertValue]   = useVariable('insertValue')
+  const [tickVar, setTick]   = useVariable('insertTick')
 
   // ── Derive rows ───────────────────────────────────────────────────────
   const isConnected = sigmaColumns && Object.keys(sigmaColumns).length > 0
@@ -42,31 +44,24 @@ export default function App() {
   const [log,        setLog]        = useState([])
   const [status,     setStatus]     = useState(null)
 
-  const handleInsert = async () => {
+  const handleInsert = () => {
     const val = inputValue.trim()
     if (!val) return
 
-    try {
-      // Force the variable to always change by clearing it first,
-      // then setting the real value — this ensures Sigma's "on change"
-      // event fires even if the same value is submitted twice in a row.
-      setInsertVar('')
-      await new Promise(r => setTimeout(r, 50))
-      setInsertVar(val)
-      await new Promise(r => setTimeout(r, 50))
+    // 1. Set the text value variable
+    setInsertValue(val)
 
-      // Fire the action trigger — wire this in Sigma to "Insert row"
-      triggerInsert()
+    // 2. Increment the tick counter — this ALWAYS changes, so Sigma's
+    //    "when insertTick changes" action trigger fires every single time.
+    //    Wire your Insert Row action sequence to: "When insertTick changes"
+    const currentTick = tickVar?.defaultValue?.value ?? 0
+    const nextTick = (parseInt(currentTick) || 0) + 1
+    setTick(nextTick)
 
-      setLog(prev => [{ val, ts: new Date().toLocaleTimeString() }, ...prev])
-      setInputValue('')
-      setStatus('ok')
-      setTimeout(() => setStatus(null), 2000)
-    } catch (e) {
-      console.error('Insert failed:', e)
-      setStatus('error')
-      setTimeout(() => setStatus(null), 3000)
-    }
+    setLog(prev => [{ val, ts: new Date().toLocaleTimeString() }, ...prev])
+    setInputValue('')
+    setStatus('ok')
+    setTimeout(() => setStatus(null), 2000)
   }
 
   // ── Styles ────────────────────────────────────────────────────────────
@@ -136,7 +131,7 @@ export default function App() {
       borderBottom: '2px solid #2e3350', fontSize: 11,
       letterSpacing: '.06em', textTransform: 'uppercase', color: '#7880a4',
     },
-    td:     { padding: '6px 10px', borderBottom: '1px solid #2e3350' },
+    td: { padding: '6px 10px', borderBottom: '1px solid #2e3350' },
     splash: {
       flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
       justifyContent: 'center', gap: 8, color: '#7880a4', textAlign: 'center', padding: 40,
@@ -145,8 +140,6 @@ export default function App() {
 
   return (
     <div style={s.shell}>
-
-      {/* ── Header ── */}
       <div style={s.header}>
         <span style={s.headerTitle}>Sigma Input Table Plugin</span>
         <span style={s.chip(isConnected)}>
@@ -169,8 +162,7 @@ export default function App() {
             />
             <button style={s.button} onClick={handleInsert}>Insert</button>
           </div>
-          {status === 'ok'    && <div style={s.statusOk}>✓ Triggered</div>}
-          {status === 'error' && <div style={s.statusError}>✕ Failed — check element panel wiring</div>}
+          {status === 'ok' && <div style={s.statusOk}>✓ Triggered</div>}
         </div>
 
         {/* ── Wiring instructions ── */}
@@ -178,19 +170,23 @@ export default function App() {
           <div style={s.calloutTitle}>Wiring instructions</div>
           <div style={s.step}>
             <span style={s.stepNum}>1</span>
-            <span>Element panel → <strong>Insert Value Variable</strong>: create a new text variable (e.g. <span style={s.code}>NewRowValue</span>)</span>
+            <span>Properties → <strong>Insert Value</strong>: select or create a text variable e.g. <span style={s.code}>insertValue</span></span>
           </div>
           <div style={s.step}>
             <span style={s.stepNum}>2</span>
-            <span>Element panel → <strong>Insert Row Action</strong>: create a new action sequence</span>
+            <span>Properties → <strong>Insert Tick</strong>: select or create a number variable e.g. <span style={s.code}>insertTick</span></span>
           </div>
           <div style={s.step}>
             <span style={s.stepNum}>3</span>
-            <span>In that action sequence add: <strong>Set Input Table column</strong> = <span style={s.code}>NewRowValue</span>, then <strong>Insert row</strong></span>
+            <span>On the <strong>insertTick</strong> control, go to Actions → add sequence triggered by <strong>"When control changes"</strong></span>
           </div>
           <div style={s.step}>
             <span style={s.stepNum}>4</span>
-            <span>Type a value above and click <strong>Insert</strong> — the plugin sets the variable then fires the action</span>
+            <span>In that sequence: <strong>Insert row</strong> into Input Table, set Text column = <span style={s.code}>insertValue</span></span>
+          </div>
+          <div style={s.step}>
+            <span style={s.stepNum}>5</span>
+            <span>The tick counter increments on every Insert click — guaranteeing the change event fires even for duplicate values</span>
           </div>
         </div>
 
